@@ -12,12 +12,6 @@ use raytracing_in_a_wekeend_rust::ray::Ray;
 use std::ops::{Div, Mul};
 
 fn ray_color(r: &Ray, world: &dyn Hitable, depth: u32) -> DVec3 {
-    //let t = hit_sphere(DVec3::new(0.0, 0.0, -1.0), 0.5, r);
-    //let a = world.hit(r, 0.001, std::f64::INFINITY);
-    //if world.hit(r, 0.001, std::f64::INFINITY).is_some() {
-    //    println!("{:?}", world.hit(r, 0.001, std::f64::INFINITY));
-    //}
-    //
     match world.hit(r, 0.0001, std::f64::INFINITY) {
         Some((hit_record, material)) => {
             let n = hit_record.normal();
@@ -33,20 +27,9 @@ fn ray_color(r: &Ray, world: &dyn Hitable, depth: u32) -> DVec3 {
             let unit_direction = r.direction().normalize();
             let t = 0.5 * (unit_direction.y + 1.0);
             DVec3::new(1.0, 1.0, 1.0) * (1.0 - t) + DVec3::new(1.0, 0.7, 0.50) * t
-            //DVec3::new(1.0, 0.0, 0.0)
         }
     }
-
-    //match world.hit(r, 0.000000001, std::f64::INFINITY) {
-    //    Some((hit_record)) => DVec3::new(0.0, 0.0, 0.0),
-    //    None => {
-    //        let unit_direction = r.direction().normalize();
-    //        let t = 0.5 * (unit_direction.y + 1.0);
-    //        DVec3::new(1.0, 1.0, 1.0) * (1.0 - t) + DVec3::new(0.5, 0.7, 1.0) * t
-    //        //DVec3::new(1.0, 0.0, 0.0)
-    //    }
-    //}
-} //
+}
 
 fn random_scene() -> HitableList {
     let material = Material::Lambertian {
