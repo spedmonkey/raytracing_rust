@@ -5,66 +5,83 @@ use itertools::{self, iproduct, Itertools};
 use rand::{random, Rng};
 use raytracing_in_a_wekeend_rust::camera::Camera;
 use raytracing_in_a_wekeend_rust::colour::Colour;
-use raytracing_in_a_wekeend_rust::hitable;
 use raytracing_in_a_wekeend_rust::hitable::{Hitable, HitableList, Sphere};
+use raytracing_in_a_wekeend_rust::material::Material;
+use raytracing_in_a_wekeend_rust::material::Material::Lambertian;
 use raytracing_in_a_wekeend_rust::ray::Ray;
 use std::ops::{Div, Mul};
-//some other test
 
-fn hit_sphere(center: DVec3, radius: f64, ray: &Ray) -> f64 {
-    let oc = ray.origin() - center;
-    let a = DVec3::dot(ray.direction(), ray.direction());
-    let b = 2.0 * DVec3::dot(oc, ray.direction());
-    let c = DVec3::dot(oc, oc) - radius * radius;
-    let discriminant = b * b - 4.0 * a * c;
-    if discriminant < 0.0 {
-        return -1.0;
-    } else {
-        return (-b - discriminant.sqrt()) / (2.0 * a);
-    };
-}
-
-fn ray_color(r: &Ray, world: &dyn Hitable) -> Colour {
+fn ray_color(r: &Ray, world: &dyn Hitable, depth: u32) -> DVec3 {
     //let t = hit_sphere(DVec3::new(0.0, 0.0, -1.0), 0.5, r);
-    let depth = 2;
-    match world.hit(r, 0.001, std::f64::INFINITY) {
-        Some(hit_record) => {
+    //let a = world.hit(r, 0.001, std::f64::INFINITY);
+    //if world.hit(r, 0.001, std::f64::INFINITY).is_some() {
+    //    println!("{:?}", world.hit(r, 0.001, std::f64::INFINITY));
+    //}
+    //
+    match world.hit(r, 0.0001, std::f64::INFINITY) {
+        Some((hit_record, material)) => {
             let n = hit_record.normal();
             let p = hit_record.p();
-            let colour = DVec3::new(0.0, 0.0, 0.0);
-            let colour = n;
-            return Colour::new(colour.x, colour.y, colour.z);
+            let (scattered, attenuation, b) = material.scatter(r, n, p);
+            if depth < 32 && b {
+                return attenuation * ray_color(&scattered, world, depth + 1);
+            } else {
+                return DVec3::new(0.0, 0.0, 0.0);
+            }
         }
         None => {
             let unit_direction = r.direction().normalize();
             let t = 0.5 * (unit_direction.y + 1.0);
-            let colour = DVec3::new(1.0, 1.0, 1.0) * (1.0 - t) + DVec3::new(0.5, 0.7, 1.0) * t;
-            return Colour::new(colour.x, colour.y, colour.z);
+            DVec3::new(1.0, 1.0, 1.0) * (1.0 - t) + DVec3::new(1.0, 0.7, 0.50) * t
+            //DVec3::new(1.0, 0.0, 0.0)
         }
     }
 
-    /*
-    let unit_direction = r.direction().normalize();
-    let a = 0.5 * (unit_direction.y + 1.0);
-    let divider = 1.7;
-    let grad = DVec3::new(a / divider, a / divider, a / divider);
-    let color_mult = DVec3::new(0.5 / divider, 0.7 / divider, 1.0 / divider);
-    let result = grad + color_mult;
-    result
-     */
-    //let unit_direction = r.direction().normalize();
-    //let a = 0.5 * (1.0 + unit_direction.y);
-    //return (Colour::new(1.0, 1.0, 1.0)) * (1.0 - a) + Colour::new(0.5, 0.7, 1.0) * a;
-}
+    //match world.hit(r, 0.000000001, std::f64::INFINITY) {
+    //    Some((hit_record)) => DVec3::new(0.0, 0.0, 0.0),
+    //    None => {
+    //        let unit_direction = r.direction().normalize();
+    //        let t = 0.5 * (unit_direction.y + 1.0);
+    //        DVec3::new(1.0, 1.0, 1.0) * (1.0 - t) + DVec3::new(0.5, 0.7, 1.0) * t
+    //        //DVec3::new(1.0, 0.0, 0.0)
+    //    }
+    //}
+} //
 
 fn random_scene() -> HitableList {
+    let material = Material::Lambertian {
+        attenuation: DVec3::new(0.5, 0.5, 0.5),
+    };
+    let material_metal = Material::Metal {
+        attenuation: DVec3::new(0.2, 0.2, 0.2),
+        fuzziness: (0.5),
+    };
     let mut list: Vec<Box<dyn Hitable>> = vec![];
-    list.push(Box::new(Sphere::new(DVec3::new(0.0, 0.0, -100.0), 10.0)));
-    list.push(Box::new(Sphere::new(DVec3::new(15.0, 10.0, -100.0), 4.0)));
-    HitableList::new(list)
+    //let attenuation = DVec3::new(0.50, 0.5, 0.50);
+    list.push(Box::new(Sphere::new(
+        DVec3::new(10.0, 4.0, -100.0),
+        4.0,
+        material_metal.clone(),
+    )));
+    list.push(Box::new(Sphere::new(
+        DVec3::new(0.0, 8.0, -100.0),
+        8.0,
+        material_metal.clone(),
+    )));
+    list.push(Box::new(Sphere::new(
+        DVec3::new(0.0, -10000.0, -100.0),
+        10000.10,
+        material.clone(),
+    )));
+
+    let hitable_list = HitableList::new(list);
+    return hitable_list;
 }
 
 fn main() {
+    //rendersettings
+    let ray_per_pixel = 100;
+
     //scene
     let world_scene = random_scene();
 
@@ -80,7 +97,7 @@ fn main() {
     let viewport_height: f64 = 2.0;
     let viewport_width = viewport_height * (image_width / image_height);
     let camera_centre = DVec3::new(0.0, 0.0, 0.0);
-    let lookfrom = DVec3::new(0.0, 0.0, 0.0);
+    let lookfrom = DVec3::new(0.0, 5.0, 0.0);
     let lookat = DVec3::new(0.0, 0.0, -100.0);
     let dist_to_focus = (lookfrom - lookat).length();
     let aperture = 0.2;
@@ -94,30 +111,32 @@ fn main() {
         dist_to_focus,
     );
     let pixels = (0..image_width as u32).cartesian_product(0..image_height as u32);
-
+    let mut rng = rand::thread_rng();
     for (index, pixel) in pixels.enumerate() {
-        let mut pixel_colour = Colour::new(0.0, 0.0, 0.0);
+        let mut pixel_colour = DVec3::new(0.0, 0.0, 0.0);
         let my_vec = vec![-0.66, -0.33, 0.33, 0.66];
         let my_vec = vec![0.0];
         let samples = iproduct!(my_vec.clone(), my_vec.clone());
-        for (offset_x, offset_y) in samples.clone() {
-            let r = &camera.get_ray(
-                (pixel.0 as f64 / image_width) + offset_x / image_width,
-                (pixel.1 as f64 / image_height) + offset_y / image_width,
-            );
-            pixel_colour = pixel_colour + ray_color(&r, &world_scene);
+
+        for _ in 0..ray_per_pixel {
+            let u = (f64::from(pixel.0) + rng.gen::<f64>()) / f64::from(image_width);
+            let v = (f64::from(pixel.1) + rng.gen::<f64>()) / f64::from(image_height);
+            let r = &camera.get_ray(u, v);
+            pixel_colour = pixel_colour + ray_color(&r, &world_scene, 0);
         }
-        pixel_colour = pixel_colour / samples.count() as f64;
+        pixel_colour = pixel_colour / f64::from(ray_per_pixel);
+
+        //let r = &camera.get_ray(pixel.0 as f64 / image_width, pixel.1 as f64 / image_height);
+        //pixel_colour = pixel_colour + ray_color(&r, &world_scene, 0);
 
         let r = pixel.0 as f64 / (image_width) as f64;
         let g = pixel.1 as f64 / (image_height) as f64;
         let b = 0.0;
 
-        let ir = (255.999 * pixel_colour.r) as u8;
-        let ig = (255.999 * pixel_colour.g) as u8;
-        let ib = (255.999 * pixel_colour.b) as u8;
+        let ir = (255.999 * pixel_colour.x) as u8;
+        let ig = (255.999 * pixel_colour.y) as u8;
+        let ib = (255.999 * pixel_colour.z) as u8;
 
-        //*pixel = Rgb([ir, ig, ib]);
         buffer.put_pixel(
             pixel.0,
             (image_height - 1.0) as u32 - pixel.1,

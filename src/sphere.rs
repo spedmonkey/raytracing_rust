@@ -1,6 +1,6 @@
 use super::hit::{Hit, HitRecord};
-use crate::ray::Ray;
 use glam::DVec3;
+use raytracing_in_a_wekeend_rust::ray::Ray;
 
 pub struct Sphere {
     center: DVec3,
@@ -8,10 +8,11 @@ pub struct Sphere {
 }
 
 impl Sphere {
-    pub fn new(cen: DVec3, r: f64) -> Sphere {
+    pub fn new(center: DVec3, radius: f64, material: Material) -> Sphere {
         Sphere {
-            center: cen,
-            radius: r,
+            center,
+            radius,
+            material,
         }
     }
 }
