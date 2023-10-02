@@ -1,15 +1,12 @@
 use glam::DVec3;
-use image::{ImageBuffer, Rgb, RgbImage};
 use indicatif::ProgressBar;
-use itertools::{self, iproduct, Itertools};
-use rand::{random, Rng};
+use rand::Rng;
+use rayon::prelude::*;
 use raytracing_in_a_wekeend_rust::camera::Camera;
-use raytracing_in_a_wekeend_rust::colour::Colour;
 use raytracing_in_a_wekeend_rust::hitable::{Hitable, HitableList, Sphere};
 use raytracing_in_a_wekeend_rust::material::Material;
-use raytracing_in_a_wekeend_rust::material::Material::Lambertian;
 use raytracing_in_a_wekeend_rust::ray::Ray;
-use std::ops::{Div, Mul};
+use std::time::Instant;
 
 fn ray_color(r: &Ray, world: &dyn Hitable, depth: u32) -> DVec3 {
     match world.hit(r, 0.0001, std::f64::INFINITY) {
@@ -26,7 +23,7 @@ fn ray_color(r: &Ray, world: &dyn Hitable, depth: u32) -> DVec3 {
         None => {
             let unit_direction = r.direction().normalize();
             let t = 0.5 * (unit_direction.y + 1.0);
-            DVec3::new(1.0, 1.0, 1.0) * (1.0 - t) + DVec3::new(1.0, 0.7, 0.50) * t
+            DVec3::new(1.0, 1.0, 1.0) * (1.0 - t) + DVec3::new(0.50, 0.7, 0.90) * t
         }
     }
 }
@@ -36,15 +33,21 @@ fn random_scene() -> HitableList {
         attenuation: DVec3::new(0.5, 0.5, 0.5),
     };
     let material_metal = Material::Metal {
-        attenuation: DVec3::new(0.2, 0.2, 0.2),
-        fuzziness: (0.5),
+        attenuation: DVec3::new(0.9, 0.9, 0.9),
+        fuzziness: (0.1),
     };
+    let material_refract = Material::Dielectric { refraction: 1.9 };
     let mut list: Vec<Box<dyn Hitable>> = vec![];
     //let attenuation = DVec3::new(0.50, 0.5, 0.50);
     list.push(Box::new(Sphere::new(
         DVec3::new(10.0, 4.0, -100.0),
         4.0,
-        material_metal.clone(),
+        material_refract.clone(),
+    )));
+    list.push(Box::new(Sphere::new(
+        DVec3::new(-10.0, 4.0, -100.0),
+        4.0,
+        material.clone(),
     )));
     list.push(Box::new(Sphere::new(
         DVec3::new(0.0, 8.0, -100.0),
@@ -62,6 +65,10 @@ fn random_scene() -> HitableList {
 }
 
 fn main() {
+    let start = Instant::now();
+    //channels
+    let channels = 3;
+
     //rendersettings
     let ray_per_pixel = 100;
 
@@ -69,17 +76,11 @@ fn main() {
     let world_scene = random_scene();
 
     //Image
-    const ASPECT_RATIO: f64 = 16.0 / 9.0;
-    const image_width: f64 = 512.0;
-    const image_height: f64 = 256.0;
-    let pb = ProgressBar::new(image_width as u64 * image_height as u64);
-    let mut buffer: RgbImage = ImageBuffer::new(image_width as u32, image_height as u32);
+    const IMAGE_WIDTH: f64 = 512.0;
+    const IMAGE_HEIGHT: f64 = 256.0;
+    let pb = ProgressBar::new(IMAGE_WIDTH as u64 * IMAGE_HEIGHT as u64 * ray_per_pixel.clone());
 
     // Camera
-    let focal_length = 1.0;
-    let viewport_height: f64 = 2.0;
-    let viewport_width = viewport_height * (image_width / image_height);
-    let camera_centre = DVec3::new(0.0, 0.0, 0.0);
     let lookfrom = DVec3::new(0.0, 5.0, 0.0);
     let lookat = DVec3::new(0.0, 0.0, -100.0);
     let dist_to_focus = (lookfrom - lookat).length();
@@ -89,46 +90,48 @@ fn main() {
         lookat,
         DVec3::new(0.0, 1.0, 0.0),
         20.0,
-        f64::from(image_width) / f64::from(image_height),
+        f64::from(IMAGE_WIDTH) / f64::from(IMAGE_HEIGHT),
         aperture,
         dist_to_focus,
     );
-    let pixels = (0..image_width as u32).cartesian_product(0..image_height as u32);
-    let mut rng = rand::thread_rng();
-    for (index, pixel) in pixels.enumerate() {
-        let mut pixel_colour = DVec3::new(0.0, 0.0, 0.0);
-        let my_vec = vec![-0.66, -0.33, 0.33, 0.66];
-        let my_vec = vec![0.0];
-        let samples = iproduct!(my_vec.clone(), my_vec.clone());
 
-        for _ in 0..ray_per_pixel {
-            let u = (f64::from(pixel.0) + rng.gen::<f64>()) / f64::from(image_width);
-            let v = (f64::from(pixel.1) + rng.gen::<f64>()) / f64::from(image_height);
-            let r = &camera.get_ray(u, v);
-            pixel_colour = pixel_colour + ray_color(&r, &world_scene, 0);
-        }
-        pixel_colour = pixel_colour / f64::from(ray_per_pixel);
-
-        //let r = &camera.get_ray(pixel.0 as f64 / image_width, pixel.1 as f64 / image_height);
-        //pixel_colour = pixel_colour + ray_color(&r, &world_scene, 0);
-
-        let r = pixel.0 as f64 / (image_width) as f64;
-        let g = pixel.1 as f64 / (image_height) as f64;
-        let b = 0.0;
-
-        let ir = (255.999 * pixel_colour.x) as u8;
-        let ig = (255.999 * pixel_colour.y) as u8;
-        let ib = (255.999 * pixel_colour.z) as u8;
-
-        buffer.put_pixel(
-            pixel.0,
-            (image_height - 1.0) as u32 - pixel.1,
-            Rgb([ir, ig, ib]),
-        );
-        pb.inc(1);
-    }
+    let mut buffer = vec![0u8; (IMAGE_WIDTH as u32 * IMAGE_HEIGHT as u32 * channels) as usize];
 
     buffer
-        .save("D:/rust/raytracing_in_a_wekeend_rust/src/renders/render.png")
-        .unwrap();
+        .par_chunks_mut((IMAGE_WIDTH as u32 * channels) as usize)
+        .rev()
+        .enumerate()
+        .for_each(|(j, row)| {
+            let mut rng = rand::thread_rng();
+            for (i, rgb) in row.chunks_mut(channels as usize).enumerate() {
+                let mut pixel_colour = DVec3::new(0.0, 0.0, 0.0);
+                for _ in 0..ray_per_pixel {
+                    let u = (i as f64 + rng.gen::<f64>()) / IMAGE_WIDTH as f64;
+                    let v = (j as f64 + rng.gen::<f64>()) / IMAGE_HEIGHT as f64;
+                    let r = &camera.get_ray(u, v);
+                    pixel_colour = pixel_colour + ray_color(&r, &world_scene, 0);
+                    pb.inc(1);
+                }
+                pixel_colour = pixel_colour / ray_per_pixel as f64;
+
+                let mut iter = rgb.iter_mut();
+                *iter.next().unwrap() = (255.999 * pixel_colour.x) as u8;
+                *iter.next().unwrap() = (255.999 * pixel_colour.y) as u8;
+                *iter.next().unwrap() = (255.999 * pixel_colour.z) as u8;
+            }
+        });
+
+    image::save_buffer(
+        "D:/rust/raytracing_in_a_wekeend_rust/src/renders/render.png",
+        &buffer,
+        IMAGE_WIDTH as u32,
+        IMAGE_HEIGHT as u32,
+        image::ColorType::Rgb8,
+    )
+    .expect("Failed to save output image");
+    //println!("{:?} {:?}", pb.position(), pb.length());
+
+    //pb.length();
+    let duration = start.elapsed();
+    println!("Time elapsed in expensive_function() is: {:?}", duration);
 }
