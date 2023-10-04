@@ -15,6 +15,9 @@ impl Sphere {
             material,
         }
     }
+    pub fn translate(translate: DVec3) -> Self {
+        self.center * translate
+    }
 }
 
 impl Hit for Sphere {

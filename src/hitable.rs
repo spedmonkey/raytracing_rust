@@ -31,6 +31,7 @@ pub trait Hitable: Sync {
     fn hit(&self, r: &Ray, t_min: f64, t_max: f64) -> Option<(HitRecord, &Material)>;
 }
 
+#[derive(Clone)]
 pub struct Sphere {
     center: DVec3,
     radius: f64,
@@ -52,6 +53,14 @@ impl Sphere {
 
     pub fn radius(&self) -> f64 {
         self.radius
+    }
+
+    pub fn translate(&mut self, translate: DVec3) {
+        self.center = self.center + translate;
+    }
+
+    pub fn scale(&mut self, scale: f64) {
+        self.radius = self.radius * scale;
     }
 }
 

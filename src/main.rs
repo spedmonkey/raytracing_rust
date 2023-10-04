@@ -44,11 +44,18 @@ fn random_scene() -> HitableList {
         4.0,
         material_refract.clone(),
     )));
-    list.push(Box::new(Sphere::new(
+    let mut some_sphere = Box::new(Sphere::new(
         DVec3::new(-10.0, 4.0, -100.0),
         4.0,
         material.clone(),
-    )));
+    ));
+    some_sphere.translate(DVec3 {
+        x: (-2.0),
+        y: (1.0),
+        z: (0.0),
+    });
+    some_sphere.scale(1.0);
+    list.push(some_sphere);
     list.push(Box::new(Sphere::new(
         DVec3::new(0.0, 8.0, -100.0),
         8.0,
@@ -68,13 +75,10 @@ fn main() {
     let start = Instant::now();
     //channels
     let channels = 3;
-
     //rendersettings
-    let ray_per_pixel = 100;
-
+    let ray_per_pixel = 10;
     //scene
     let world_scene = random_scene();
-
     //Image
     const IMAGE_WIDTH: f64 = 512.0;
     const IMAGE_HEIGHT: f64 = 256.0;
@@ -129,9 +133,6 @@ fn main() {
         image::ColorType::Rgb8,
     )
     .expect("Failed to save output image");
-    //println!("{:?} {:?}", pb.position(), pb.length());
-
-    //pb.length();
     let duration = start.elapsed();
     println!("Time elapsed in expensive_function() is: {:?}", duration);
 }
