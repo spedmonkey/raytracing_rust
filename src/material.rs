@@ -16,6 +16,7 @@ pub enum Material {
     Lambertian { attenuation: DVec3 },
     Metal { attenuation: DVec3, fuzziness: f64 },
     Dielectric { refraction: f64 },
+    Light { emission: DVec3 },
 }
 fn reflect(v: DVec3, n: DVec3) -> DVec3 {
     v - n * v.dot(n) * 2.0
@@ -54,6 +55,41 @@ fn scatter_metal(
     (scattered, attenuation, b)
 }
 
+fn scatter_dialectric(r: &Ray, n: DVec3, p: DVec3, refraction: f64) -> (Ray, DVec3, bool) {
+    let reflected = reflect(r.direction(), n);
+    let (outward_normal, ni_over_nt, cosine) = if r.direction().dot(n) > 0.0 {
+        (
+            -n,
+            refraction,
+            refraction * r.direction().dot(n) / r.direction().length(),
+        )
+    } else {
+        (
+            n,
+            1.0 / refraction,
+            -(r.direction().dot(n)) / r.direction().length(),
+        )
+    };
+    let scattered = match refract(r.direction(), outward_normal, ni_over_nt) {
+        Some(refracted) => {
+            let reflect_prob = schlik(cosine, refraction);
+            let mut rng = rand::thread_rng();
+            if rng.gen::<f64>() < reflect_prob {
+                Ray::new(p, reflected)
+            } else {
+                Ray::new(p, refracted)
+            }
+        }
+        None => Ray::new(p, reflected),
+    };
+    let attenuation = DVec3::new(1.0, 1.0, 1.0);
+    (scattered, attenuation, true)
+}
+
+fn scatter_light(target: DVec3, p: DVec3) -> (Ray, DVec3, bool) {
+    return (Ray::new(p, target - p), DVec3::new(10.0, 10.0, 10.0), false);
+}
+
 impl Material {
     pub fn scatter(&self, r: &Ray, n: DVec3, p: DVec3) -> (Ray, DVec3, bool) {
         let target = p + n + random_in_unit_sphere();
@@ -63,36 +99,18 @@ impl Material {
                 attenuation,
                 fuzziness,
             } => scatter_metal(r, n, p, *attenuation, *fuzziness),
-            Material::Dielectric { refraction } => {
-                let reflected = reflect(r.direction(), n);
-                let (outward_normal, ni_over_nt, cosine) = if r.direction().dot(n) > 0.0 {
-                    (
-                        -n,
-                        *refraction,
-                        refraction * r.direction().dot(n) / r.direction().length(),
-                    )
-                } else {
-                    (
-                        n,
-                        1.0 / refraction,
-                        -(r.direction().dot(n)) / r.direction().length(),
-                    )
-                };
-                let scattered = match refract(r.direction(), outward_normal, ni_over_nt) {
-                    Some(refracted) => {
-                        let reflect_prob = schlik(cosine, *refraction);
-                        let mut rng = rand::thread_rng();
-                        if rng.gen::<f64>() < reflect_prob {
-                            Ray::new(p, reflected)
-                        } else {
-                            Ray::new(p, refracted)
-                        }
-                    }
-                    None => Ray::new(p, reflected),
-                };
-                let attenuation = DVec3::new(1.0, 1.0, 1.0);
-                (scattered, attenuation, true)
-            }
+            Material::Dielectric { refraction } => scatter_dialectric(r, n, p, *refraction), //{
+            Material::Light { emission } => scatter_light(target, p),
+        }
+    }
+    pub fn get_emission(&self) -> DVec3 {
+        match self {
+            Material::Light { emission } => *emission,
+            _ => DVec3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
         }
     }
 }

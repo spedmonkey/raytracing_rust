@@ -4,13 +4,15 @@ use std::f64::consts::PI;
 
 use rand::prelude::*;
 
-fn random_in_unit_disk() -> DVec3 {
+pub fn random_in_unit_disk() -> DVec3 {
     let mut rng = rand::thread_rng();
-    let mut p = DVec3::new(1.0, 1.0, 1.0);
-    while p.dot(p) >= 1.0 {
-        p = DVec3::new(rng.gen::<f64>(), rng.gen::<f64>(), 0.0) * 2.0 - DVec3::new(1.0, 1.0, 0.0);
+
+    loop {
+        let p = DVec3::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0), 0.0);
+        if p.length() < 1.0 {
+            return p;
+        }
     }
-    p
 }
 
 pub struct Camera {
@@ -85,13 +87,13 @@ impl Camera {
     }
 
     pub fn get_ray(&self, s: f64, t: f64) -> Ray {
-        let _rd = random_in_unit_disk() * self.lens_radius();
-
-        //let offset = self.u() * rd.x + self.v() * rd.y;
+        let rd = random_in_unit_disk() * self.lens_radius();
+        let offset = self.u() * rd.x + self.v() * rd.y;
         Ray::new(
-            //self.origin() + offset,
-            self.origin(),
-            self.lower_left_corner() + self.horizontal() * s + self.vertical() * t - self.origin(),
+            self.origin() + offset,
+            self.lower_left_corner() + s * self.horizontal() + t * self.vertical()
+                - self.origin()
+                - offset,
         )
     }
 }
