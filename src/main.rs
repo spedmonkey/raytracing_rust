@@ -1,13 +1,20 @@
 #![deny(clippy::all)]
 #![forbid(unsafe_code)]
 use glam::DVec3;
+use image::buffer;
 use indicatif::ProgressBar;
 use rand::Rng;
+
+use rand_pcg::Pcg32;
 use rayon::prelude::*;
 use raytracing_in_a_wekeend_rust::camera::Camera;
 use raytracing_in_a_wekeend_rust::hitable::{Hitable, HitableList, Sphere};
 use raytracing_in_a_wekeend_rust::material::Material;
 use raytracing_in_a_wekeend_rust::ray::Ray;
+use seeded_random::{Random, Seed};
+use std::process;
+
+//use pixels::{wgpu, PixelsContext};
 
 use std::time::Instant;
 
@@ -15,7 +22,7 @@ mod gui;
 use crate::gui::Framework;
 use error_iter::ErrorIter as _;
 use log::error;
-use pixels::{Error, Pixels, SurfaceTexture};
+use pixels::{Error, Pixels, PixelsBuilder, PixelsContext, SurfaceTexture};
 use winit::dpi::LogicalSize;
 use winit::event::{Event, VirtualKeyCode};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -72,7 +79,7 @@ fn random_scene() -> HitableList {
     list.push(Box::new(Sphere::new(
         DVec3::new(10.0, 4.0, -100.0),
         4.0,
-        material_refract.clone(),
+        material.clone(),
     )));
     //list.push(Box::new(Sphere::new(
     //    DVec3::new(-35.0, 4.0, -2000.0),
@@ -80,7 +87,7 @@ fn random_scene() -> HitableList {
     //    material_sun.clone(),
     //)));
     let mut some_sphere = Box::new(Sphere::new(
-        DVec3::new(-10.0, 4.0, -100.0),
+        DVec3::new(-20.0, 10.0, -100.0),
         4.0,
         material_sun.clone(),
     ));
@@ -142,74 +149,54 @@ impl Render {
     /// Assumes the default texture format: `wgpu::TextureFormat::Rgba8UnormSrgb`
     ///
 
-    fn draw(&self, frame: &mut [u8]) {
+    fn draw(&self, frame: &mut [u8], count: f64) {
         //let a = frame;
         let channels = 4;
-        let ray_per_pixel = 4;
+        let ray_per_pixel = 1;
         let camera = get_camera();
         let world_scene = random_scene();
+        let mut result: Vec<Vec<u8>> = Vec::new();
         frame
             .par_chunks_mut((WIDTH as u32 * channels) as usize)
             .rev()
             .enumerate()
             .for_each(|(j, row)| {
-                let mut rng = rand::thread_rng();
                 for (i, rgb) in row.chunks_mut(channels as usize).enumerate() {
                     let mut pixel_colour = DVec3::new(0.0, 0.0, 0.0);
-                    let existing_r = rgb[0];
-                    let existing_g = rgb[1];
-                    let existing_b = rgb[2];
+                    let existing_r = rgb[0].clone();
+                    let existing_g = rgb[1].clone();
+                    let existing_b = rgb[2].clone();
+                    let existing_colour =
+                        DVec3::new(existing_r as f64, existing_g as f64, existing_b as f64);
                     for _ in 0..ray_per_pixel {
-                        let u = (i as f64 + rng.gen::<f64>()) / WIDTH as f64;
-                        let v = (j as f64 + rng.gen::<f64>()) / HEIGHT as f64;
+                        //println!("{:?}", random);
+                        //process::exit(0);
+                        let mut rng = rand::thread_rng();
+                        let random_num = rng.gen::<f64>();
+                        //println!("{:?}", random_x);
+                        let u = (i as f64 + random_num) / WIDTH as f64;
+                        let v = (j as f64 + random_num) / HEIGHT as f64;
                         let r = &camera.get_ray(u, v);
-                        pixel_colour = pixel_colour + ray_color(&r, &world_scene, 0);
+                        pixel_colour = (pixel_colour + ray_color(&r, &world_scene, 0)) * 255.0;
+                        //pixel_colour = pixel_colour.lerp(existing_colour, (1.0 / count));
+                        pixel_colour = existing_colour.lerp(pixel_colour, (1.0 / count));
+                        rgb[0] = pixel_colour.x as u8;
+                        rgb[1] = pixel_colour.y as u8;
+                        rgb[2] = pixel_colour.z as u8;
+                        rgb[3] = (255) as u8
                     }
-                    pixel_colour = pixel_colour / ray_per_pixel as f64;
-
-                    let mut iter = rgb.iter_mut();
-                    if existing_r != 0 {
-                        *iter.next().unwrap() =
-                            (((255.999 * pixel_colour.x) + existing_r as f64) / 2.0) as u8;
-                        *iter.next().unwrap() =
-                            (((255.999 * pixel_colour.y) + existing_g as f64) / 2.0) as u8;
-                        *iter.next().unwrap() =
-                            (((255.999 * pixel_colour.z) + existing_b as f64) / 2.0) as u8;
-                        *iter.next().unwrap() = (255) as u8;
-                    } else {
-                        *iter.next().unwrap() = (255.999 * pixel_colour.x) as u8;
-                        *iter.next().unwrap() = (255.999 * pixel_colour.y) as u8;
-                        *iter.next().unwrap() = (255.999 * pixel_colour.z) as u8;
-                        *iter.next().unwrap() = (255) as u8;
-                    }
+                    //pixel_colour = pixel_colour / ray_per_pixel as f64;
+                    //
+                    //let red_result = (existing_r as f64 + (pixel_colour.x as f64 * 255.0)) as u8;
+                    //let green_result = (existing_g as f64 + (pixel_colour.y as f64 * 255.0)) as u8;
+                    //let blue_result = (existing_b as f64 + (pixel_colour.z as f64 * 255.0)) as u8;
+                    //
+                    //rgb[0] = red_result.clone();
+                    //rgb[1] = green_result.clone();
+                    //rgb[2] = blue_result.clone();
+                    //rgb[3] = (255) as u8;
                 }
             });
-        /*
-        for (i, pixel) in frame.chunks_exact_mut(4).rev().enumerate() {
-            let x = 512 - (i % WIDTH as usize) as i16;
-            let y = (i / WIDTH as usize) as i16;
-            let u = x as f64 / WIDTH as f64;
-            let v = y as f64 / HEIGHT as f64;
-            let ray = &camera.get_ray(u as f64, v as f64);
-
-            let pixel_colour = ray_color(&ray, &world_scene, 6);
-
-            let colour = [
-                (((pixel_colour.x * 255.0) + pixel[0] as f64) * 0.5_f64) as u8,
-                (pixel_colour.y * 255.0) as u8,
-                (((pixel_colour.z * 255.0) + pixel[2] as f64) * 0.5_f64) as u8,
-                (pixel_colour.x * 255.0) as u8,
-            ];
-
-            let test = [(u * WIDTH as f64) as u8, 0, 0, 255];
-            //if pixel_colour.x * 255.0 > 250.0 {
-            //    println!("{:?} {:?}", pixel_colour.x * 255.0, pixel[0]);
-            //}
-
-            //println!("{}", (x as f64 * 255_f64) as u8);
-            pixel.copy_from_slice(&colour);
-            //pixel.copy_from_slice(&[1, 0, 0, 0]);
-             */
     }
 }
 
@@ -250,6 +237,9 @@ fn main() -> Result<(), Error> {
         let window_size = window.inner_size();
         let scale_factor = window.scale_factor() as f32;
         let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &window);
+        //let mut pixels = PixelsBuilder::new(WIDTH, HEIGHT, surface_texture);
+        //pixels.texture_format(egui_wgpu::wgpu::TextureFormat::Rgba32Float);
+        //let a = pixels.build()?;
         let pixels = Pixels::new(WIDTH, HEIGHT, surface_texture)?;
         let framework = Framework::new(
             &event_loop,
@@ -286,46 +276,10 @@ fn main() -> Result<(), Error> {
         aperture,
         dist_to_focus,
     );
-    /*
-
-    let mut buffer = vec![0u8; (IMAGE_WIDTH as u32 * IMAGE_HEIGHT as u32 * channels) as usize];
-
-    buffer
-        .par_chunks_mut((IMAGE_WIDTH as u32 * channels) as usize)
-        .rev()
-        .enumerate()
-        .for_each(|(j, row)| {
-            let mut rng = rand::thread_rng();
-            for (i, rgb) in row.chunks_mut(channels as usize).enumerate() {
-                let mut pixel_colour = DVec3::new(0.0, 0.0, 0.0);
-                for _ in 0..ray_per_pixel {
-                    let u = (i as f64 + rng.gen::<f64>()) / IMAGE_WIDTH as f64;
-                    let v = (j as f64 + rng.gen::<f64>()) / IMAGE_HEIGHT as f64;
-                    let r = &camera.get_ray(u, v);
-                    pixel_colour = pixel_colour + ray_color(&r, &world_scene, 0);
-                    pb.inc(1);
-                }
-                pixel_colour = pixel_colour / ray_per_pixel as f64;
-
-                let mut iter = rgb.iter_mut();
-                *iter.next().unwrap() = (255.999 * pixel_colour.x) as u8;
-                *iter.next().unwrap() = (255.999 * pixel_colour.y) as u8;
-                *iter.next().unwrap() = (255.999 * pixel_colour.z) as u8;
-            }
-        });
-
-    image::save_buffer(
-        "D:/rust/raytracing_in_a_wekeend_rust/src/renders/render.png",
-        &buffer,
-        IMAGE_WIDTH as u32,
-        IMAGE_HEIGHT as u32,
-        image::ColorType::Rgb8,
-    )
-    .expect("Failed to save output image");
-     */
 
     //
     let mut render = Render::new();
+    let mut count: f64 = 0.0;
 
     event_loop.run(move |event, _, control_flow| {
         // Handle input events
@@ -336,7 +290,7 @@ fn main() -> Result<(), Error> {
                 return;
             }
 
-            // Update the scale factor
+            // Update the scale factorxx
             if let Some(scale_factor) = input.scale_factor() {
                 framework.scale_factor(scale_factor);
             }
@@ -352,19 +306,37 @@ fn main() -> Result<(), Error> {
             }
 
             // Update internal state and request a redraw
-            render.update();
+            //\render.update();
             window.request_redraw();
         }
 
         match event {
             Event::WindowEvent { event, .. } => {
+                println!("Window event");
                 // Update egui inputs
                 framework.handle_event(&event);
             }
             // Draw the current frame
             Event::RedrawRequested(_) => {
+                //println!("Redraw Requested");
                 // Draw the world
-                render.draw(pixels.frame_mut());
+                //println!("Event::RedrawRequested");
+                count += 1.0;
+                if count < 100.0 {
+                    render.draw(pixels.frame_mut(), count);
+                }
+
+                //image::save_buffer(
+                //    format!(
+                //        "D:/rust/raytracing_in_a_wekeend_rust/src/renders/test_{:?}.png",
+                //        count
+                //    ),
+                //    buffer_pixels,
+                //    WIDTH,
+                //    HEIGHT,
+                //    image::ColorType::Rgba8,
+                //)
+                //.expect("Failed to save output image");
 
                 // Prepare egui
                 framework.prepare(&window);
@@ -386,173 +358,10 @@ fn main() -> Result<(), Error> {
                     *control_flow = ControlFlow::Exit;
                 }
             }
-            _ => (),
+            _ => {
+                //println!("other");
+                ()
+            }
         }
     });
 }
-
-/*
-
-const WIDTH: u32 = 640;
-const HEIGHT: u32 = 480;
-const BOX_SIZE: i16 = 64;
-
-/// Representation of the application state. In this example, a box will bounce around the screen.
-struct World {
-    box_x: i16,
-    box_y: i16,
-    velocity_x: i16,
-    velocity_y: i16,
-}
-
-fn main() -> Result<(), Error> {
-    env_logger::init();
-    let event_loop = EventLoop::new();
-    let mut input = WinitInputHelper::new();
-    let window = {
-        let size = LogicalSize::new(WIDTH as f64, HEIGHT as f64);
-        WindowBuilder::new()
-            .with_title("Hello Pixels + egui")
-            .with_inner_size(size)
-            .with_min_inner_size(size)
-            .build(&event_loop)
-            .unwrap()
-    };
-
-    let (mut pixels, mut framework) = {
-        let window_size = window.inner_size();
-        let scale_factor = window.scale_factor() as f32;
-        let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &window);
-        let pixels = Pixels::new(WIDTH, HEIGHT, surface_texture)?;
-        let framework = Framework::new(
-            &event_loop,
-            window_size.width,
-            window_size.height,
-            scale_factor,
-            &pixels,
-        );
-
-        (pixels, framework)
-    };
-    let mut world = World::new();
-
-    event_loop.run(move |event, _, control_flow| {
-        // Handle input events
-        if input.update(&event) {
-            // Close events
-            if input.key_pressed(VirtualKeyCode::Escape) || input.close_requested() {
-                *control_flow = ControlFlow::Exit;
-                return;
-            }
-
-            // Update the scale factor
-            if let Some(scale_factor) = input.scale_factor() {
-                framework.scale_factor(scale_factor);
-            }
-
-            // Resize the window
-            if let Some(size) = input.window_resized() {
-                if let Err(err) = pixels.resize_surface(size.width, size.height) {
-                    log_error("pixels.resize_surface", err);
-                    *control_flow = ControlFlow::Exit;
-                    return;
-                }
-                framework.resize(size.width, size.height);
-            }
-
-            // Update internal state and request a redraw
-            world.update();
-            window.request_redraw();
-        }
-
-        match event {
-            Event::WindowEvent { event, .. } => {
-                // Update egui inputs
-                framework.handle_event(&event);
-            }
-            // Draw the current frame
-            Event::RedrawRequested(_) => {
-                // Draw the world
-                world.draw(pixels.frame_mut());
-
-                // Prepare egui
-                framework.prepare(&window);
-
-                // Render everything together
-                let render_result = pixels.render_with(|encoder, render_target, context| {
-                    // Render the world texture
-                    context.scaling_renderer.render(encoder, render_target);
-
-                    // Render egui
-                    framework.render(encoder, render_target, context);
-
-                    Ok(())
-                });
-
-                // Basic error handling
-                if let Err(err) = render_result {
-                    log_error("pixels.render", err);
-                    *control_flow = ControlFlow::Exit;
-                }
-            }
-            _ => (),
-        }
-    });
-}
-
-fn log_error<E: std::error::Error + 'static>(method_name: &str, err: E) {
-    error!("{method_name}() failed: {err}");
-    for source in err.sources().skip(1) {
-        error!("  Caused by: {source}");
-    }
-}
-
-impl World {
-    /// Create a new `World` instance that can draw a moving box.
-    fn new() -> Self {
-        Self {
-            box_x: 24,
-            box_y: 16,
-            velocity_x: 1,
-            velocity_y: 1,
-        }
-    }
-
-    /// Update the `World` internal state; bounce the box around the screen.
-    fn update(&mut self) {
-        if self.box_x <= 0 || self.box_x + BOX_SIZE > WIDTH as i16 {
-            self.velocity_x *= -1;
-        }
-        if self.box_y <= 0 || self.box_y + BOX_SIZE > HEIGHT as i16 {
-            self.velocity_y *= -1;
-        }
-
-        self.box_x += self.velocity_x;
-        self.box_y += self.velocity_y;
-    }
-
-    /// Draw the `World` state to the frame buffer.
-    ///
-    /// Assumes the default texture format: `wgpu::TextureFormat::Rgba8UnormSrgb`
-    fn draw(&self, frame: &mut [u8]) {
-        for (i, pixel) in frame.chunks_exact_mut(4).enumerate() {
-            let x = (i % WIDTH as usize) as i16;
-            let y = (i / WIDTH as usize) as i16;
-
-            let inside_the_box = x >= self.box_x
-                && x < self.box_x + BOX_SIZE
-                && y >= self.box_y
-                && y < self.box_y + BOX_SIZE;
-
-            let rgba = if inside_the_box {
-                [0x5e, 0x48, 0xe8, 0xff]
-            } else {
-                [0x48, 0xb2, 0xe8, 0xff]
-            };
-
-            pixel.copy_from_slice(&rgba);
-            pixel.copy_from_slice(&[0, 0, 0, 0]);
-        }
-    }
-}
- */

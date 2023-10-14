@@ -6,7 +6,6 @@ use rand::prelude::*;
 
 pub fn random_in_unit_disk() -> DVec3 {
     let mut rng = rand::thread_rng();
-
     loop {
         let p = DVec3::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0), 0.0);
         if p.length() < 1.0 {

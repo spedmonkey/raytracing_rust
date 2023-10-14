@@ -1,4 +1,4 @@
-use egui::{ClippedPrimitive, Context, TexturesDelta};
+use egui::{ClippedPrimitive, Context, TexturesDelta, Visuals};
 use egui_wgpu::renderer::{Renderer, ScreenDescriptor};
 use pixels::{wgpu, PixelsContext};
 use winit::event_loop::EventLoopWindowTarget;
@@ -16,6 +16,10 @@ pub(crate) struct Framework {
 
     // State for the GUI
     gui: Gui,
+}
+
+struct RenderOptions {
+    render: bool,
 }
 
 /// Example application state. A real application will need a lot more state than this.
@@ -36,6 +40,7 @@ impl Framework {
         let max_texture_size = pixels.device().limits().max_texture_dimension_2d as usize;
 
         let egui_ctx = Context::default();
+        egui_ctx.set_visuals(Visuals::dark());
         let mut egui_state = egui_winit::State::new(event_loop);
         egui_state.set_max_texture_side(max_texture_size);
         egui_state.set_pixels_per_point(scale_factor);
@@ -46,7 +51,6 @@ impl Framework {
         let renderer = Renderer::new(pixels.device(), pixels.render_texture_format(), None, 1);
         let textures = TexturesDelta::default();
         let gui = Gui::new();
-
         Self {
             egui_ctx,
             egui_state,
@@ -90,6 +94,9 @@ impl Framework {
         self.paint_jobs = self.egui_ctx.tessellate(output.shapes);
     }
 
+    //pub(crate) fn test(&mut self) {
+    //    self.gui.ui(ctx).
+    //}
     /// Render egui.
     pub(crate) fn render(
         &mut self,
@@ -135,12 +142,15 @@ impl Framework {
             self.renderer.free_texture(id);
         }
     }
+    pub fn get_ctx(self) -> Context {
+        self.egui_ctx.clone()
+    }
 }
 
 impl Gui {
     /// Create a `Gui`.
     fn new() -> Self {
-        Self { window_open: true }
+        Self { window_open: false }
     }
 
     /// Create the UI using egui.
@@ -170,5 +180,13 @@ impl Gui {
                     ui.hyperlink("https://docs.rs/egui");
                 });
             });
+        egui::SidePanel::left("my_left_panel").show(ctx, |ui| {
+            ui.label("Hello World!");
+
+            if ui.button("Click each year").clicked() {
+                println!("awesome");
+            }
+            ui.text_edit_singleline(&mut "awesome");
+        });
     }
 }

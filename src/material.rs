@@ -1,11 +1,11 @@
 use crate::ray::Ray;
 use glam::DVec3;
-use rand::prelude::*;
 
+use rand::Rng;
 fn random_in_unit_sphere() -> DVec3 {
-    let mut rng = rand::thread_rng();
     let mut p = DVec3::new(1.0, 1.0, 1.0);
     while p.length_squared() >= 1.0 {
+        let mut rng = rand::thread_rng();
         p = DVec3::new(rng.gen::<f64>(), rng.gen::<f64>(), rng.gen::<f64>()) * 2.0
             - DVec3::new(1.0, 1.0, 1.0);
     }
